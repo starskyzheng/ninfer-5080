@@ -43,8 +43,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 1440
     env:
-      # runner context is only valid at job level, not the workflow-level env block.
-      HF_HOME: ${{ runner.temp }}/hf-cache
+      # /tmp on hosted runners sits on the same ~90 GB root disk as the
+      # work/temp dirs; avoid the runner context (not valid in job-level env).
+      HF_HOME: /tmp/hf-cache
 
     steps:
       - name: Check out repository
