@@ -37,7 +37,7 @@ from tools.convert.common.quantize import pick_device, quantize_and_encode
 from tools.convert.common.safetensors import ShardReader
 from tools.convert.qwen3_6.common import conversion as family_conversion
 from tools.convert.qwen3_6.common.recipe import SourceTensor
-from tools.convert.qwen3_6_27b import recipe as base_recipe
+from tools.convert.qwen3_6_27b import draft_head, recipe as base_recipe
 
 from . import dflash2_recipe, inventory
 from .convert import _repo_root, build_conversion_report, encode_tensor_payload
@@ -179,7 +179,7 @@ def convert(
 
     elapsed = time.perf_counter() - started
     final_bytes = output.stat().st_size
-    ranking = _repo_root() / base_recipe.draft_head.DEFAULT_RANKING
+    ranking = _repo_root() / draft_head.DEFAULT_RANKING
     arguments = {
         "model": str(model_dir),
         "dflash2_model": str(dflash2_model_dir),
