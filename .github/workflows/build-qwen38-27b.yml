@@ -213,10 +213,22 @@ jobs:
 
           # The same path is used on every run. Hugging Face creates a new
           # commit whose file replaces the previous object at that path.
-          hf upload "$HF_REPO" "$artifact" "$(basename "$artifact")" \
-            --repo-type model \
-            --token "$HF_TOKEN" \
-            --commit-message "build: replace ${artifact##*/}"
+          # 16GB Xet uploads can time out on the final commit-create HTTP call
+          # even though the data bytes already landed on HF's Xet CDN. Retry so
+          # the retried commit is near-instant (data already cached).
+          for attempt in 1 2 3 4 5; do
+            if hf upload "$HF_REPO" "$artifact" "$(basename "$artifact")" \
+              --repo-type model \
+              --token "$HF_TOKEN" \
+              --commit-message "build: replace ${artifact##*/} (attempt $attempt)"; then
+              echo "upload succeeded on attempt $attempt"
+              exit 0
+            fi
+            echo "upload attempt $attempt failed; retrying in 30s..."
+            sleep 30
+          done
+          echo "all upload attempts failed" >&2
+          exit 1
 
       - name: Write job summary
         if: always()
