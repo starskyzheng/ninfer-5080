@@ -117,12 +117,24 @@ jobs:
         run: |
           set -euxo pipefail
           mkdir -p "$RUNNER_TEMP/models/base"
-          hf download "$BASE_MODEL" \
-            --revision "$BASE_REVISION" \
-            --local-dir "$RUNNER_TEMP/models/base" \
-            --token "$HF_TOKEN" \
-            --exclude '*.md' \
-            --exclude '.gitattributes'
+          # hf download resumes incomplete files on retry; the RUNNER_TEMP dir
+          # persists across steps in the same job, so a transient network error
+          # does not force a full 52 GB re-download.
+          for attempt in 1 2 3; do
+            if hf download "$BASE_MODEL" \
+              --revision "$BASE_REVISION" \
+              --local-dir "$RUNNER_TEMP/models/base" \
+              --token "$HF_TOKEN" \
+              --exclude '*.md' \
+              --exclude '.gitattributes'; then
+              echo "base download OK on attempt $attempt"
+              break
+            fi
+            echo "base download attempt $attempt failed; retrying in 20s..."
+            sleep 20
+          done
+          test -f "$RUNNER_TEMP/models/base/model.safetensors.index.json" || \
+            { echo "base checkpoint incomplete after retries" >&2; exit 1; }
 
       - name: Download DFlash2 checkpoint
         env:
@@ -131,12 +143,21 @@ jobs:
         run: |
           set -euxo pipefail
           mkdir -p "$RUNNER_TEMP/models/dflash2"
-          hf download "$DFLASH_MODEL" \
-            --revision "$DFLASH_REVISION" \
-            --local-dir "$RUNNER_TEMP/models/dflash2" \
-            --token "$HF_TOKEN" \
-            --exclude '*.md' \
-            --exclude '.gitattributes'
+          for attempt in 1 2 3; do
+            if hf download "$DFLASH_MODEL" \
+              --revision "$DFLASH_REVISION" \
+              --local-dir "$RUNNER_TEMP/models/dflash2" \
+              --token "$HF_TOKEN" \
+              --exclude '*.md' \
+              --exclude '.gitattributes'; then
+              echo "dflash2 download OK on attempt $attempt"
+              break
+            fi
+            echo "dflash2 download attempt $attempt failed; retrying in 20s..."
+            sleep 20
+          done
+          test -f "$RUNNER_TEMP/models/dflash2/model.safetensors" || \
+            { echo "dflash2 checkpoint incomplete after retries" >&2; exit 1; }
 
       - name: Download NVFP4 checkpoint
         if: ${{ inputs.profile == 'nvfp4' }}
@@ -146,12 +167,21 @@ jobs:
         run: |
           set -euxo pipefail
           mkdir -p "$RUNNER_TEMP/models/nvfp4"
-          hf download "$NVFP4_MODEL" \
-            --revision "$NVFP4_REVISION" \
-            --local-dir "$RUNNER_TEMP/models/nvfp4" \
-            --token "$HF_TOKEN" \
-            --exclude '*.md' \
-            --exclude '.gitattributes'
+          for attempt in 1 2 3; do
+            if hf download "$NVFP4_MODEL" \
+              --revision "$NVFP4_REVISION" \
+              --local-dir "$RUNNER_TEMP/models/nvfp4" \
+              --token "$HF_TOKEN" \
+              --exclude '*.md' \
+              --exclude '.gitattributes'; then
+              echo "nvfp4 download OK on attempt $attempt"
+              break
+            fi
+            echo "nvfp4 download attempt $attempt failed; retrying in 20s..."
+            sleep 20
+          done
+          test -f "$RUNNER_TEMP/models/nvfp4/model.safetensors" || \
+            { echo "nvfp4 checkpoint incomplete after retries" >&2; exit 1; }
 
       - name: Convert groupwise-int artifact
         if: ${{ inputs.profile == 'groupwise-int' }}
