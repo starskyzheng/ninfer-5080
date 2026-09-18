@@ -24,7 +24,9 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  HF_HOME: /mnt/ninfer-cache/huggingface
+  # Conversion is CPU-only (no GPU on the hosted runner). Validated local path:
+  # pure PyTorch + numpy, ~12 min for the full 27B on 12 CPU cores.
+  HF_HOME: ${{ runner.temp }}/hf-cache
   HF_HUB_ENABLE_HF_TRANSFER: "1"
   PYTHONUNBUFFERED: "1"
   BASE_MODEL: Qwen/Qwen3.8-27B
@@ -36,12 +38,10 @@ env:
 
 jobs:
   build-and-publish:
-    runs-on:
-      - self-hosted
-      - linux
-      - x64
-      - nvidia
-      - rtx5080
+    # GitHub-hosted CPU runner. Public repo -> ubuntu-latest = 4 CPU / 16 GB RAM /
+    # ~90 GB free disk. Standard runners carry no GPU; the convert tool is pure
+    # PyTorch/numpy and runs fine on CPU (--device cpu, see tools/convert/.../quantize.py).
+    runs-on: ubuntu-latest
     timeout-minutes: 1440
 
     steps:
@@ -50,16 +50,28 @@ jobs:
         with:
           fetch-depth: 1
 
-      - name: Check GPU and disk
+      - name: Free disk space (drop preinstalled toolchains)
+        # Standard ubuntu-latest runners come with ~40 GB of preinstalled
+        # toolchains (dotnet, ghc, hosted tools) that we do not use. Removing
+        # them gives headroom for the ~52 GB base checkpoint + ~23 GB NVFP4
+        # checkpoint + ~16 GB output on the nvfp4 profile, which would
+        # otherwise exceed the ~90 GB free budget.
         shell: bash
         run: |
           set -euxo pipefail
-          nvidia-smi
+          sudo rm -rf /usr/share/dotnet /opt/ghc "$AGENT_TOOLSDIRECTORY"
+          df -h
+
+      - name: Report machine resources
+        shell: bash
+        run: |
+          set -euxo pipefail
+          nproc
           python3 --version
           df -h
           free -h
 
-      - name: Create Python environment
+      - name: Create Python environment (CPU torch)
         shell: bash
         run: |
           set -euxo pipefail
@@ -67,30 +79,12 @@ jobs:
           "$RUNNER_TEMP/ninfer-venv/bin/python" -m pip install --upgrade pip wheel
           "$RUNNER_TEMP/ninfer-venv/bin/pip" install \
             torch \
-            --index-url https://download.pytorch.org/whl/cu128
-          "$RUNNER_TEMP/ninfer-venv/bin/pip" install \
             "numpy>=1.24" \
             "safetensors>=0.5" \
             "huggingface_hub>=0.30" \
-            "hf_transfer>=0.1.9" \
-            "transformers>=5.12" \
-            "tokenizers>=0.22" \
-            "flash-linear-attention>=0.5.1"
+            "hf_transfer>=0.1.9"
 
           echo "$RUNNER_TEMP/ninfer-venv/bin" >> "$GITHUB_PATH"
-
-      - name: Verify CUDA PyTorch
-        shell: bash
-        run: |
-          set -euxo pipefail
-          python - <<'PY'
-          import torch
-          print("torch:", torch.__version__)
-          print("cuda:", torch.version.cuda)
-          if not torch.cuda.is_available():
-              raise SystemExit("CUDA is unavailable on this runner")
-          print("device:", torch.cuda.get_device_name(0))
-          PY
 
       - name: Validate required Hugging Face repository input
         env:
@@ -165,7 +159,7 @@ jobs:
             --model "$RUNNER_TEMP/models/base" \
             --dflash2-model "$RUNNER_TEMP/models/dflash2" \
             --out out/qwen3_8_27b.ninfer \
-            --device cuda
+            --device cpu
 
       - name: Convert NVFP4 artifact
         if: ${{ inputs.profile == 'nvfp4' }}
@@ -178,7 +172,7 @@ jobs:
             --quantized-model "$RUNNER_TEMP/models/nvfp4" \
             --dflash2-model "$RUNNER_TEMP/models/dflash2" \
             --out out/qwen3_8_27b_nvfp4.ninfer \
-            --device cuda
+            --device cpu
 
       - name: Validate final artifact
         shell: bash
