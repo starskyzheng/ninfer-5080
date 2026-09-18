@@ -205,17 +205,20 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
+          # Xet upload of a 16 GB file hangs/times out on the final
+          # commit-create HTTP call (observed twice). Disable Xet for the
+          # upload so huggingface_hub falls back to the standard chunked
+          # presigned-URL path, which is slower but completes reliably.
+          export HF_HUB_DISABLE_XET=1
+          export HF_HUB_ENABLE_HF_TRANSFER=0
           if [[ "${{ inputs.profile }}" == "groupwise-int" ]]; then
             artifact=out/qwen3_8_27b.ninfer
           else
             artifact=out/qwen3_8_27b_nvfp4.ninfer
           fi
 
-          # The same path is used on every run. Hugging Face creates a new
-          # commit whose file replaces the previous object at that path.
-          # 16GB Xet uploads can time out on the final commit-create HTTP call
-          # even though the data bytes already landed on HF's Xet CDN. Retry so
-          # the retried commit is near-instant (data already cached).
+          # Same path on every run. Retry a few times for transient network
+          # errors; each retry re-uploads from scratch but is bounded.
           for attempt in 1 2 3 4 5; do
             if hf upload "$HF_REPO" "$artifact" "$(basename "$artifact")" \
               --repo-type model \
