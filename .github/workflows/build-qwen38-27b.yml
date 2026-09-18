@@ -26,7 +26,8 @@ concurrency:
 env:
   # Conversion is CPU-only (no GPU on the hosted runner). Validated local path:
   # pure PyTorch + numpy, ~12 min for the full 27B on 12 CPU cores.
-  HF_HUB_ENABLE_HF_TRANSFER: "1"
+  # High-performance Xet transfer (hf_transfer is deprecated in hf>=1.30)
+  HF_XET_HIGH_PERFORMANCE: "1"
   PYTHONUNBUFFERED: "1"
   BASE_MODEL: Qwen/Qwen3.8-27B
   BASE_REVISION: 1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0
@@ -107,7 +108,7 @@ jobs:
         run: |
           set -euxo pipefail
           test -n "$HF_TOKEN"
-          hf auth login --token "$HF_TOKEN" --add-to-git-credential=false
+          hf auth login --token "$HF_TOKEN"
 
       - name: Download official Qwen3.8-27B checkpoint
         env:
